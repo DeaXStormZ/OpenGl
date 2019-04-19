@@ -466,12 +466,22 @@ class SimpleTriangle(ColorMesh):
         super().__init__([position, color])
 
 
-class Cylinder(Node):
-    """ Very simple cylinder based on practical 2 load function """
-
+class Saturn(Node):
     def __init__(self):
         super().__init__()
-        self.add(*load('cylinder.obj'))  # just load the cylinder from file
+        self.add(*load_textured('Saturn/13906_Saturn_v1_l3.obj'))
+
+
+class Spaceship(Node):
+    def __init__(self):
+        super().__init__()
+        self.add(*load('spaceship/ship.obj'))  # just load the obj from file
+
+
+class WormHole(Node):
+    def __init__(self):
+        super().__init__()
+        self.add(*load_textured('Jupiter/jupiter.obj'))
 
 
 # -------------- 3D ressource loader -----------------------------------------
@@ -702,27 +712,99 @@ class Viewer:
                 GL.glPolygonMode(GL.GL_FRONT_AND_BACK, next(self.fill_modes))
 
 
+class RotationControlNode(Node):
+    def __init__(self, key_up, key_down, axis, angle=0, transform_after=identity(), precision=1.0, **param):
+        super().__init__(**param)  # forward base constructor named arguments
+        self.angle, self.axis = angle, axis
+        self.key_up, self.key_down = key_up, key_down
+        self.transform_after = transform_after
+        self.precision = precision
+
+    def draw(self, projection, view, model, win=None, **param):
+        assert win is not None
+        self.angle += self.precision * int(glfw.get_key(win, self.key_up) == glfw.PRESS)
+        self.angle -= self.precision * int(glfw.get_key(win, self.key_down) == glfw.PRESS)
+        self.transform = rotate(self.axis, self.angle) @ self.transform_after
+
+        # call Node's draw method to pursue the hierarchical tree calling
+        super().draw(projection, view, model, win=win, **param)
+
+
 # -------------- main program and scene setup --------------------------------
 def main():
     """ create a window, add scene objects, then run rendering loop """
 
     viewer = Viewer()
 
-    # # place instances of our basic objects
-    # viewer.add(TexturedPlane("/home/matthias/PycharmProjects/OpenGLDeaXStormZ/grass.png"))
-    #
-    # # start rendering loop
-    # viewer.run()
+    # node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, vec(0, 1, 0), transform_after=translate(360, 0, 360) @ scale(0.2))
 
-    # place instances of our basic objects
-    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load_textured(file)])
-    if len(sys.argv) < 2:
-        print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-              ' format supported by pyassimp.' % (sys.argv[0],))
+    saturn = Node(transform=rotate((0, 1, 0), -72))
+    saturn.add(Saturn())
 
-    # viewer.add(Cylinder())
-    # start rendering loop
+    wormhole = Node(transform=translate(350, 0, 350))
+    wormhole.add(WormHole())
+
+    spaceship = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, vec(1, 0, 0), angle=-20, precision=0.5,
+                                    transform_after=translate(350, 0, 350) @ scale(0.2))
+    # on peut faire tourner le vaisseau
+    spaceship.add(Spaceship())
+
+    theta = 0.0  # base horizontal rotation angle
+    phi1 = 0.0  # arm angle
+    phi2 = 0.0  # forearm angle
+
+    transform_spaceship = Node(transform=translate(0, 0, 1) @ rotate((0, 0, 1), phi2))
+    transform_spaceship.add(spaceship)
+
+    transform_wormhole = Node(rotate((0, 0, 1), phi1))
+    transform_wormhole.add(wormhole, transform_spaceship)
+
+    transform_saturn = Node(transform=rotate((0, 1, 0), theta))
+    transform_saturn.add(saturn, transform_wormhole)
+    # viewer.add(base_shape, arm_shape, forearm_shape)
+    viewer.add(transform_saturn)
     viewer.run()
+
+    # viewer = Viewer()
+    #
+    # # place instances of our basic objects
+    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    # if len(sys.argv) < 2:
+    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
+    #           ' format supported by pyassimp.' % (sys.argv[0],))
+    #
+    # # ---- let's make our shapes ---------------------------------------
+    # # think about it: we can re-use the same cylinder instance!
+    # cylinder = Cylinder()
+    # #
+    # # # make a flat cylinder
+    # base_shape = Node(transform=scale(.8))
+    # base_shape.add(cylinder)  # shape of robot base
+    #
+    # # make a thin cylinder
+    # arm_shape = Node(transform=translate(0, 1, 0) @ scale(.6))
+    # arm_shape.add(cylinder)  # shape of arm
+    #
+    # # make a thin cylinder
+    # forearm_shape = Node(transform=translate(0, 1, 0) @ scale(.4))
+    # forearm_shape.add(cylinder)  # shape of forearm
+    #
+    # # ---- construct our robot arm hierarchy ---------------------------
+    # theta = 45.0  # base horizontal rotation angle
+    # phi1 = 45.0  # arm angle
+    # phi2 = 20.0  # forearm angle
+    #
+    # transform_forearm = Node(transform=translate(0, 1, 0) @ rotate((0, 0, 1), phi2))
+    # transform_forearm.add(forearm_shape)
+    #
+    # transform_arm = Node(transform=rotate((0, 0, 1), phi1))
+    # transform_arm.add(arm_shape, transform_forearm)
+    #
+    # transform_base = Node(transform=rotate((0, 1, 0), theta))
+    # transform_base.add(base_shape, transform_arm)
+    # # viewer.add(base_shape, arm_shape, forearm_shape)
+    # viewer.add(transform_base)
+    # viewer.run()
 
 
 if __name__ == '__main__':

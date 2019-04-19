@@ -14,7 +14,7 @@ import numpy as np  # all matrix manipulations & OpenGL args
 import pyassimp  # 3D resource loader
 import pyassimp.errors  # Assimp error management + exceptions
 
-from transform import Trackball, identity, translate, rotate, scale
+from transform import *
 from PIL import Image  # load images for textures
 from itertools import cycle
 from transform import lerp, vec
@@ -736,6 +736,9 @@ def main():
 
     viewer = Viewer()
 
+    # my_keyframes = KeyFrames({0: 1, 3: 7, 6: 20})
+    # my_keyframes.value(glfw.get_time())
+
     # node = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, vec(0, 1, 0), transform_after=translate(360, 0, 360) @ scale(0.2))
 
     saturn = Node(transform=rotate((0, 1, 0), -72))
@@ -744,6 +747,7 @@ def main():
     wormhole = Node(transform=translate(350, 0, 350))
     wormhole.add(WormHole())
 
+    glfw.set_time(0)
     spaceship = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, vec(1, 0, 0), angle=-20, precision=0.5,
                                     transform_after=translate(350, 0, 350) @ scale(0.2))
     # on peut faire tourner le vaisseau

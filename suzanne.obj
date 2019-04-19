@@ -1,5 +1,7 @@
 # Blender v2.76 (sub 0) OBJ File: ''
 # www.blender.org
+mtllib vp.mtl
+usemtl white
 v 0.468262 0.166974 0.735936
 v 0.463867 0.180641 0.745095
 v 0.464713 0.150816 0.732472

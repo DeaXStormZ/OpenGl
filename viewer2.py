@@ -314,7 +314,7 @@ class Viewer:
             # draw our scene objects
             for drawable in self.drawables:
                 drawable.draw(projection, view, identity(),
-                              color_shader=self.color_shader, win=self.win)
+                              phong_shader=self.color_shader, win=self.win)
 
             # flush render commands, and swap draw buffers
             glfw.swap_buffers(self.win)

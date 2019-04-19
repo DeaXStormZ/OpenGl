@@ -1,5 +1,7 @@
 # Blender v2.77 (sub 0) OBJ File: ''
 # www.blender.org
+mtllib vp.mtl
+usemtl gold
 o Cylinder
 v 0.000000 -1.000000 -1.000000
 v 0.000000 1.000000 -1.000000

@@ -157,6 +157,94 @@ void main()
     FragColor = vec4(result, 1.0);
 }"""
 
+PHONG_VERT = """#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+
+out vec3 Normal;
+out vec3 FragPos;
+out vec3 viewPos;
+out vec3 ambient;
+out vec3 diffuse;
+out vec3 specular;
+out float shininess;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+
+void main()
+{
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = mat3(transpose(inverse(model))) * aNormal;  
+    viewPos = aPos;
+    gl_Position = projection * view * vec4(FragPos, 1.0);
+
+} """
+# TODO check the def of viewpos cf https://learnopengl.com/Lighting/Basic-Lighting, and change the decl of ambient, diffuse and specular like
+# uniform Material material and pass in python the vec3
+PHONG_FRAG = """#version 330 core
+struct Material {
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+    float shininess;
+};
+  
+struct Light {
+    vec3 position;
+    vec3 ambient;
+    vec3 diffuse;
+    vec3 specular;
+};
+
+Light light;
+Material material;
+in vec3 Normal;
+in vec3 FragPos;
+in vec3 viewPos;
+uniform vec3 ambient;
+uniform vec3 diffuse;
+uniform vec3 specular;
+uniform float shininess;
+out vec4 FragColor;
+
+uniform vec3 objectColor = vec3(1.0, 0.5, 0.31);
+uniform vec3 lightColor = vec3(0.5, 0.5, 0.5);
+uniform vec3 lightPos = vec3(1.2, 1.0, 2.0);
+
+
+void main()
+{    
+    light.ambient = vec3(0.2, 0.2, 0.2);
+    light.diffuse = vec3(0.5, 0.5, 0.5);
+    light.specular = vec3(1.0, 1.0, 1.0);
+    light.position = vec3(1.2, 1.0, 2.0);
+    material.ambient = ambient;
+    material.diffuse = diffuse;
+    material.specular = specular;
+    material.shininess = shininess;
+    
+    // ambient
+    vec3 ambient = light.ambient * material.ambient;
+    
+    // diffuse
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(light.position - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = light.diffuse * (diff * material.diffuse);
+    
+    // specular
+    vec3 viewDir = normalize(viewPos - FragPos);
+    vec3 reflectDir = reflect(-lightDir, norm);
+    float spec = pow(max(dot(viewDir, reflectDir), 0.0), material.shininess);
+    vec3 specular = light.specular * (spec * material.specular);
+    
+    vec3 result = ambient + diffuse;
+    FragColor = vec4(result, 1.0);
+}"""
+
 # -------------- Example texture plane class ----------------------------------
 TEXTURE_VERT = """#version 330 core
 uniform mat4 modelviewprojection;
@@ -204,7 +292,6 @@ class Texture:
 
 
 # ------------  Scene object classes ------------------------------------------
-
 class Node:
     """ Scene graph transform and parameter broadcast node """
 
@@ -220,7 +307,7 @@ class Node:
         """ Recursive draw, passing down named parameters & model matrix. """
         # merge named parameters given at initialization with those given here
         param = dict(param, **self.param)
-        model = model @ self.transform  # what to insert here for hierarchical update?
+        model = model @ self.transform  # TODO not sure what to insert here for hierarchical update?
         for child in self.children:
             child.draw(projection, view, model, **param)
 
@@ -298,21 +385,68 @@ class ColorMesh:
 
 
 class PhongMesh:
-
     def __init__(self, attributes, index=None):
         self.vertex_array = VertexArray(attributes, index)
 
-    def draw(self, projection, view, model, color_shader, **param):
-        names = ['view', 'projection', 'model']
-        loc = {n: GL.glGetUniformLocation(color_shader.glid, n) for n in names}
-        GL.glUseProgram(color_shader.glid)
+    def draw(self, projection, view, model, phong_shader=None, Kd=(1, 1, 1),
+             Ka=(0, 0, 0), Ks=(1, 1, 1), Ns=16.0, **params):
+        names = ['view', 'projection', 'model', 'diffuse', 'ambient', 'specular',
+                 'shininess']  # TODO prend le Ns par default alors qu il y en a un dans le mtl
+        loc = {n: GL.glGetUniformLocation(phong_shader.glid, n) for n in names}
+        GL.glUseProgram(phong_shader.glid)
 
         GL.glUniformMatrix4fv(loc['view'], 1, True, view)
         GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
         GL.glUniformMatrix4fv(loc['model'], 1, True, model)
+        GL.glUniform3fv(loc['diffuse'], 1, Kd)
+        GL.glUniform3fv(loc['ambient'], 1, Ka)
+        GL.glUniform3fv(loc['specular'], 1, Ks)
+        GL.glUniform1f(loc['shininess'], Ns)
 
         # draw triangle as GL_TRIANGLE vertex array, draw array call
         self.vertex_array.execute(GL.GL_TRIANGLES)
+
+
+class TexturedMesh:
+    def __init__(self, texture, attributes, index=None):
+        self.vertex_array = VertexArray(attributes, index)
+        # interactive toggles
+        # self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
+        #                    GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
+        # self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
+        #                      (GL.GL_LINEAR, GL.GL_LINEAR),
+        #                      (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
+        # self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
+
+        # setup texture and upload it to GPU
+        self.texture = texture
+
+    def draw(self, projection, view, model, texture_shader=None, win=None, **_kwargs):
+        # # some interactive elements
+        # if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
+        #     self.wrap_mode = next(self.wrap)
+        #     # self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
+        #
+        # if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
+        #     self.filter_mode = next(self.filter)
+        #     # self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
+
+        GL.glUseProgram(texture_shader.glid)
+
+        # projection geometry
+        loc = GL.glGetUniformLocation(texture_shader.glid, 'modelviewprojection')
+        GL.glUniformMatrix4fv(loc, 1, True, projection @ view @ model)
+
+        # texture access setups
+        loc = GL.glGetUniformLocation(texture_shader.glid, 'diffuseMap') #TODO change TEXTURE_SAHDER ?
+        GL.glActiveTexture(GL.GL_TEXTURE0)
+        GL.glBindTexture(GL.GL_TEXTURE_2D, GL.glGenTextures(1))  # TODO not sure, should be self.texture.glid
+        GL.glUniform1i(loc, 0)
+        self.vertex_array.execute(GL.GL_TRIANGLES)
+
+        # leave clean state for easier debugging
+        GL.glBindTexture(GL.GL_TEXTURE_2D, 0)
+        GL.glUseProgram(0)
 
 
 class SimpleTriangle(ColorMesh):
@@ -335,6 +469,21 @@ class Cylinder(Node):
 
 
 # -------------- 3D ressource loader -----------------------------------------
+# def load(file):
+#     """ load resources from file using pyassimp, return list of ColorMesh """
+#     try:
+#         option = pyassimp.postprocess.aiProcessPreset_TargetRealtime_MaxQuality
+#         scene = pyassimp.load(file, option)
+#     except pyassimp.errors.AssimpError:
+#         print('ERROR: pyassimp unable to load', file)
+#         return []  # error reading => return empty list
+#
+#     meshes = [ColorMesh([m.vertices, m.normals], m.faces) for m in scene.meshes]
+#     size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
+#     print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
+#
+#     pyassimp.release(scene)
+#     return meshes
 def load(file):
     """ load resources from file using pyassimp, return list of ColorMesh """
     try:
@@ -344,7 +493,65 @@ def load(file):
         print('ERROR: pyassimp unable to load', file)
         return []  # error reading => return empty list
 
-    meshes = [ColorMesh([m.vertices, m.normals], m.faces) for m in scene.meshes]
+    # reorganize and keep only first material properties of each
+    for mat in scene.materials:
+        mat.tokens = dict(reversed(list(mat.properties.items())))
+
+    # prepare mesh nodes
+    meshes = []
+    for mesh in scene.meshes:
+        mat = scene.materials[mesh.materialindex].tokens
+        node = Node(Kd=mat.get('diffuse', (1, 1, 1)),
+                    Ka=mat.get('ambient', (0, 0, 0)),
+                    Ks=mat.get('specular', (1, 1, 1)),
+                    s=mat.get('shininess', 16.))
+        node.add(PhongMesh([mesh.vertices, mesh.normals], mesh.faces))
+        meshes.append(node)
+
+    size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
+    print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
+
+    pyassimp.release(scene)
+    return meshes
+
+
+# -------------- 3D textured mesh loader ---------------------------------------
+def load_textured(file):
+    """ load resources using pyassimp, return list of TexturedMeshes """
+    try:
+        option = pyassimp.postprocess.aiProcessPreset_TargetRealtime_MaxQuality
+        scene = pyassimp.load(file, option)
+    except pyassimp.errors.AssimpError:
+        print('ERROR: pyassimp unable to load', file)
+        return []  # error reading => return empty list
+
+    # Note: embedded textures not supported at the moment
+    path = os.path.dirname(file)
+    path = os.path.join('.', '') if path == '' else path
+    for mat in scene.materials:
+        mat.tokens = dict(reversed(list(mat.properties.items())))
+        if 'file' in mat.tokens:  # texture file token
+            tname = mat.tokens['file'].split('/')[-1].split('\\')[-1]
+            # search texture in file's whole subdir since path often screwed up
+            tname = [os.path.join(d[0], f) for d in os.walk(path) for f in d[2]
+                     if tname.startswith(f) or f.startswith(tname)]
+            if tname:
+                mat.texture = tname[0]
+            else:
+                print('Failed to find texture:', tname)
+
+    # prepare textured mesh
+    meshes = []
+    for mesh in scene.meshes:
+        texture = scene.materials[mesh.materialindex].texture
+
+        # tex coords in raster order: compute 1 - y to follow OpenGL convention
+        tex_uv = ((0, 1) + mesh.texturecoords[0][:, :2] * (1, -1)
+                  if mesh.texturecoords.size else None)
+
+        # create the textured mesh object from texture, attributes, and indices
+        meshes.append(TexturedMesh(texture, [mesh.vertices, tex_uv], mesh.faces))
+
     size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
     print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
 
@@ -416,7 +623,7 @@ class Viewer:
         glfw.window_hint(glfw.CONTEXT_VERSION_MINOR, 3)
         glfw.window_hint(glfw.OPENGL_FORWARD_COMPAT, GL.GL_TRUE)
         glfw.window_hint(glfw.OPENGL_PROFILE, glfw.OPENGL_CORE_PROFILE)
-        glfw.window_hint(glfw.RESIZABLE, False)
+        glfw.window_hint(glfw.RESIZABLE, True)
         self.win = glfw.create_window(width, height, 'Viewer', None, None)
 
         # make win's OpenGL context current; no OpenGL calls can happen before
@@ -424,6 +631,7 @@ class Viewer:
 
         # register event handlers
         glfw.set_key_callback(self.win, self.on_key)
+        glfw.set_window_size_callback(self.win, self.on_size)
 
         # useful message to check OpenGL renderer characteristics
         print('OpenGL', GL.glGetString(GL.GL_VERSION).decode() + ', GLSL',
@@ -437,6 +645,8 @@ class Viewer:
 
         # compile and initialize shader programs once globally
         self.color_shader = Shader(COLOR_VERT, COLOR_FRAG)
+        self.phong_shader = Shader(PHONG_VERT, PHONG_FRAG)
+        self.texture_shader = Shader(TEXTURE_VERT, TEXTURE_FRAG)
 
         # initially empty list of object to draw
         self.drawables = []
@@ -446,6 +656,10 @@ class Viewer:
 
         # cyclic iterator to easily toggle polygon rendering modes
         self.fill_modes = cycle([GL.GL_LINE, GL.GL_POINT, GL.GL_FILL])
+
+    def on_size(self, win, width, height):
+        """ window size update => update viewport to new framebuffer size """
+        GL.glViewport(0, 0, *glfw.get_framebuffer_size(win))
 
     def run(self):
         """ Main render loop for this OpenGL window """
@@ -460,8 +674,9 @@ class Viewer:
             # draw our scene objects
             for drawable in self.drawables:
                 drawable.draw(projection, view, identity(),
-                              color_shader=self.color_shader, win=self.win)
-
+                              color_shader=self.color_shader, phong_shader=self.phong_shader,
+                              texture_shader=self.texture_shader, win=self.win)
+            # TODO use texture_shader
             # flush render commands, and swap draw buffers
             glfw.swap_buffers(self.win)
 
@@ -494,11 +709,12 @@ def main():
     # viewer.run()
 
     # place instances of our basic objects
-    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
+    viewer.add(*[mesh for file in sys.argv[1:] for mesh in load_textured(file)])
     if len(sys.argv) < 2:
         print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
               ' format supported by pyassimp.' % (sys.argv[0],))
 
+    # viewer.add(Cylinder())
     # start rendering loop
     viewer.run()
 
@@ -507,4 +723,3 @@ if __name__ == '__main__':
     glfw.init()  # initialize window system glfw
     main()  # main function keeps variables locally scoped
     glfw.terminate()  # destroy all glfw windows and GL contexts
-

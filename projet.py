@@ -408,39 +408,44 @@ class PhongMesh:
 
 
 class TexturedMesh:
-    def __init__(self, texture, attributes, index=None):
+    def __init__(self, file, attributes, index=None):
         self.vertex_array = VertexArray(attributes, index)
         # interactive toggles
-        # self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
-        #                    GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
-        # self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
-        #                      (GL.GL_LINEAR, GL.GL_LINEAR),
-        #                      (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
-        # self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
+        self.wrap = cycle([GL.GL_REPEAT, GL.GL_MIRRORED_REPEAT,
+                           GL.GL_CLAMP_TO_BORDER, GL.GL_CLAMP_TO_EDGE])
+        self.filter = cycle([(GL.GL_NEAREST, GL.GL_NEAREST),
+                             (GL.GL_LINEAR, GL.GL_LINEAR),
+                             (GL.GL_LINEAR, GL.GL_LINEAR_MIPMAP_LINEAR)])
+        self.wrap_mode, self.filter_mode = next(self.wrap), next(self.filter)
 
         # setup texture and upload it to GPU
-        self.texture = texture
+        self.file = file
+
+        # setup texture and upload it to GPU
+        self.texture = Texture(file, self.wrap_mode, *self.filter_mode)
+        self.shader = None
 
     def draw(self, projection, view, model, texture_shader=None, win=None, **_kwargs):
-        # # some interactive elements
-        # if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
-        #     self.wrap_mode = next(self.wrap)
-        #     # self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
-        #
-        # if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
-        #     self.filter_mode = next(self.filter)
-        #     # self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
+        self.shader = texture_shader
+        # some interactive elements
+        if glfw.get_key(win, glfw.KEY_F6) == glfw.PRESS:
+            self.wrap_mode = next(self.wrap)
+            self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
 
-        GL.glUseProgram(texture_shader.glid)
+        if glfw.get_key(win, glfw.KEY_F7) == glfw.PRESS:
+            self.filter_mode = next(self.filter)
+            self.texture = Texture(self.file, self.wrap_mode, *self.filter_mode)
+
+        GL.glUseProgram(self.shader.glid)
 
         # projection geometry
-        loc = GL.glGetUniformLocation(texture_shader.glid, 'modelviewprojection')
+        loc = GL.glGetUniformLocation(self.shader.glid, 'modelviewprojection')
         GL.glUniformMatrix4fv(loc, 1, True, projection @ view @ model)
 
         # texture access setups
-        loc = GL.glGetUniformLocation(texture_shader.glid, 'diffuseMap') #TODO change TEXTURE_SAHDER ?
+        loc = GL.glGetUniformLocation(self.shader.glid, 'diffuseMap')
         GL.glActiveTexture(GL.GL_TEXTURE0)
-        GL.glBindTexture(GL.GL_TEXTURE_2D, GL.glGenTextures(1))  # TODO not sure, should be self.texture.glid
+        GL.glBindTexture(GL.GL_TEXTURE_2D, self.texture.glid)
         GL.glUniform1i(loc, 0)
         self.vertex_array.execute(GL.GL_TRIANGLES)
 

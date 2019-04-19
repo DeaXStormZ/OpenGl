@@ -249,10 +249,11 @@ void main()
 TEXTURE_VERT = """#version 330 core
 uniform mat4 modelviewprojection;
 layout(location = 0) in vec3 position;
+layout(location = 1) in vec3 tex_position;
 out vec2 fragTexCoord;
 void main() {
     gl_Position = modelviewprojection * vec4(position, 1);
-    fragTexCoord = position.xy;
+    fragTexCoord = tex_position.xy;
 }"""
 
 TEXTURE_FRAG = """#version 330 core

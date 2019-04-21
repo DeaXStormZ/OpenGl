@@ -484,6 +484,12 @@ class WormHole(Node):
         self.add(*load_textured('Jupiter/jupiter.obj'))
 
 
+class Bullet(Node):
+    def __init__(self):
+        super().__init__()
+        self.add(*load('bullet/bullet.obj'))  # just load the obj from file
+
+
 # -------------- 3D ressource loader -----------------------------------------
 # def load(file):
 #     """ load resources from file using pyassimp, return list of ColorMesh """
@@ -627,8 +633,6 @@ class GLFWTrackball(Trackball):
         self.zoom(deltay, glfw.get_window_size(win)[1])
 
 
-# Note: this code queries the window for keypresses: you need to pass win=self.win to each object’s draw call in
-# Viewer.run() method.
 class Viewer:
     """ GLFW viewer window, with classic initialization & graphics loop """
 
@@ -710,21 +714,34 @@ class Viewer:
                 glfw.set_window_should_close(self.win, True)
             if key == glfw.KEY_W:
                 GL.glPolygonMode(GL.GL_FRONT_AND_BACK, next(self.fill_modes))
+            if key == glfw.KEY_SPACE:
+                glfw.set_time(0)
 
 
 class RotationControlNode(Node):
-    def __init__(self, key_up, key_down, axis, angle=0, transform_after=identity(), precision=1.0, **param):
+    def __init__(self, key_up, key_down, axis, angle=0, transform_before=identity(),
+                 transform_after=identity(), precision=1.0,
+                 **param):  # key_right, key_left, position=0, precision_position=0.2,
         super().__init__(**param)  # forward base constructor named arguments
         self.angle, self.axis = angle, axis
         self.key_up, self.key_down = key_up, key_down
-        self.transform_after = transform_after
+        # self.key_right, self.key_left = key_right, key_left
+        self.transform_before, self.transform_after = transform_before, transform_after
         self.precision = precision
+        # self.position = position
+        # self.precision_position = precision_position
 
     def draw(self, projection, view, model, win=None, **param):
         assert win is not None
         self.angle += self.precision * int(glfw.get_key(win, self.key_up) == glfw.PRESS)
         self.angle -= self.precision * int(glfw.get_key(win, self.key_down) == glfw.PRESS)
-        self.transform = rotate(self.axis, self.angle) @ self.transform_after
+        # print(self.angle)
+        # self.position += self.precision_position * int(glfw.get_key(win, self.key_right) == glfw.PRESS)
+        # self.position -= self.precision_position * int(glfw.get_key(win, self.key_left) == glfw.PRESS)
+        # print(self.position)
+        # translation = self.position * self.position_axis
+        self.transform = self.transform_before @ rotate(self.axis,
+                                                        self.angle) @ self.transform_after  # @ translate(0, self.position,0)
 
         # call Node's draw method to pursue the hierarchical tree calling
         super().draw(projection, view, model, win=win, **param)
@@ -748,25 +765,58 @@ def main():
     wormhole.add(WormHole())
 
     glfw.set_time(0)
-    spaceship = RotationControlNode(glfw.KEY_LEFT, glfw.KEY_RIGHT, vec(1, 0, 0), angle=-20, precision=0.5,
-                                    transform_after=translate(350, 0, 350) @ scale(0.2))
-    # on peut faire tourner le vaisseau
+
+    spaceship = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
+                                    precision=2,
+                                    transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
+                                                     translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                    transform_after=translate(0, -9, 0))
     spaceship.add(Spaceship())
 
-    theta = 0.0  # base horizontal rotation angle
-    phi1 = 0.0  # arm angle
-    phi2 = 0.0  # forearm angle
+    bullet = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
+                                 precision=2,
+                                 transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
+                                                  translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                 transform_after=rotate((0, 0, 1), 90) @ translate(8, -100, 0))
 
-    transform_spaceship = Node(transform=translate(0, 0, 1) @ rotate((0, 0, 1), phi2))
-    transform_spaceship.add(spaceship)
+    bullet1 = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
+                                  precision=2,
+                                  transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
+                                                   translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                  transform_after=rotate((0, 0, 1), 90) @ translate(-8, -100, 0))
 
-    transform_wormhole = Node(rotate((0, 0, 1), phi1))
+    bullet2 = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
+                                  precision=2,
+                                  transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
+                                                   translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                  transform_after=rotate((0, 0, 1), 90) @ translate(0, -100, -8))
+
+    bullet3 = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
+                                  precision=2,
+                                  transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
+                                                   translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                  transform_after=rotate((0, 0, 1), 90) @ translate(0, -100, 8))
+
+    bullet.add(Bullet())
+    bullet1.add(Bullet())
+    bullet2.add(Bullet())
+    bullet3.add(Bullet())
+
+    transform_bullet = Node()
+    transform_bullet.add(bullet, bullet1, bullet2, bullet3)
+
+    transform_spaceship = Node()
+    transform_spaceship.add(spaceship, transform_bullet)
+
+    transform_wormhole = Node()
     transform_wormhole.add(wormhole, transform_spaceship)
 
-    transform_saturn = Node(transform=rotate((0, 1, 0), theta))
+    transform_saturn = Node()
     transform_saturn.add(saturn, transform_wormhole)
-    # viewer.add(base_shape, arm_shape, forearm_shape)
+
     viewer.add(transform_saturn)
+    print('time can be set to 0 with key_space')
+    print('spaceship can rotate on itself with key_right and key_left')
     viewer.run()
 
     # viewer = Viewer()

@@ -1,0 +1,12 @@
+newmtl blinn2SG
+Ka 0.2653 0.0160 0.0097
+Kd 0.7551 0.0327 0.0146
+Ks 0.7510 0.0816 0.0490
+illum 2
+Ns 132.5600
+newmtl initialShadingGroup
+illum 4
+Kd 0.50 0.50 0.50
+Ka 0.00 0.00 0.00
+Tf 1.00 1.00 1.00
+Ni 1.00

@@ -614,7 +614,9 @@ class GLFWTrackball(Trackball):
 
     def __init__(self, win):
         """ Init needs a GLFW window handler 'win' to register callbacks """
-        super().__init__()
+        super().__init__(radians=[1, .5, -.6])
+        self.distance = 900
+        self.pos2d = (0, 0)
         self.mouse = (0, 0)
         glfw.set_cursor_pos_callback(win, self.on_mouse_move)
         glfw.set_scroll_callback(win, self.on_scroll)
@@ -740,8 +742,8 @@ class RotationControlNode(Node):
         # self.position -= self.precision_position * int(glfw.get_key(win, self.key_left) == glfw.PRESS)
         # print(self.position)
         # translation = self.position * self.position_axis
-        self.transform = self.transform_before @ rotate(self.axis,
-                                                        self.angle) @ self.transform_after  # @ translate(0, self.position,0)
+        self.transform = rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ self.transform_before @ \
+                         rotate(self.axis, self.angle) @ self.transform_after  # @ translate(0, self.position,0)
 
         # call Node's draw method to pursue the hierarchical tree calling
         super().draw(projection, view, model, win=win, **param)
@@ -768,34 +770,29 @@ def main():
 
     spaceship = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
                                     precision=2,
-                                    transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
-                                                     translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                    transform_before=translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
                                     transform_after=translate(0, -9, 0))
     spaceship.add(Spaceship())
 
     bullet = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
                                  precision=2,
-                                 transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
-                                                  translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
-                                 transform_after=rotate((0, 0, 1), 90) @ translate(8, -100, 0))
+                                 transform_before=translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                 transform_after=rotate((0, 0, 1), 90) @ translate(8, 5, 0))
 
     bullet1 = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
                                   precision=2,
-                                  transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
-                                                   translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
-                                  transform_after=rotate((0, 0, 1), 90) @ translate(-8, -100, 0))
+                                  transform_before=translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                  transform_after=rotate((0, 0, 1), 90) @ translate(-8, 5, 0))
 
     bullet2 = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
                                   precision=2,
-                                  transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
-                                                   translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
-                                  transform_after=rotate((0, 0, 1), 90) @ translate(0, -100, -8))
+                                  transform_before=translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                  transform_after=rotate((0, 0, 1), 90) @ translate(0, 5, -8))
 
     bullet3 = RotationControlNode(glfw.KEY_RIGHT, glfw.KEY_LEFT, vec(1, 0, 0),
                                   precision=2,
-                                  transform_before=rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ \
-                                                   translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
-                                  transform_after=rotate((0, 0, 1), 90) @ translate(0, -100, 8))
+                                  transform_before=translate(350, 0, 350) @ scale(0.2) @ rotate((0, 0, 1), 90),
+                                  transform_after=rotate((0, 0, 1), 90) @ translate(0, 5, 8))
 
     bullet.add(Bullet())
     bullet1.add(Bullet())
@@ -815,50 +812,10 @@ def main():
     transform_saturn.add(saturn, transform_wormhole)
 
     viewer.add(transform_saturn)
+    print('the window is resizable')
     print('time can be set to 0 with key_space')
     print('spaceship can rotate on itself with key_right and key_left')
     viewer.run()
-
-    # viewer = Viewer()
-    #
-    # # place instances of our basic objects
-    # viewer.add(*[mesh for file in sys.argv[1:] for mesh in load(file)])
-    # if len(sys.argv) < 2:
-    #     print('Usage:\n\t%s [3dfile]*\n\n3dfile\t\t the filename of a model in'
-    #           ' format supported by pyassimp.' % (sys.argv[0],))
-    #
-    # # ---- let's make our shapes ---------------------------------------
-    # # think about it: we can re-use the same cylinder instance!
-    # cylinder = Cylinder()
-    # #
-    # # # make a flat cylinder
-    # base_shape = Node(transform=scale(.8))
-    # base_shape.add(cylinder)  # shape of robot base
-    #
-    # # make a thin cylinder
-    # arm_shape = Node(transform=translate(0, 1, 0) @ scale(.6))
-    # arm_shape.add(cylinder)  # shape of arm
-    #
-    # # make a thin cylinder
-    # forearm_shape = Node(transform=translate(0, 1, 0) @ scale(.4))
-    # forearm_shape.add(cylinder)  # shape of forearm
-    #
-    # # ---- construct our robot arm hierarchy ---------------------------
-    # theta = 45.0  # base horizontal rotation angle
-    # phi1 = 45.0  # arm angle
-    # phi2 = 20.0  # forearm angle
-    #
-    # transform_forearm = Node(transform=translate(0, 1, 0) @ rotate((0, 0, 1), phi2))
-    # transform_forearm.add(forearm_shape)
-    #
-    # transform_arm = Node(transform=rotate((0, 0, 1), phi1))
-    # transform_arm.add(arm_shape, transform_forearm)
-    #
-    # transform_base = Node(transform=rotate((0, 1, 0), theta))
-    # transform_base.add(base_shape, transform_arm)
-    # # viewer.add(base_shape, arm_shape, forearm_shape)
-    # viewer.add(transform_base)
-    # viewer.run()
 
 
 if __name__ == '__main__':

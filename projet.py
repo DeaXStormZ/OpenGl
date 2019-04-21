@@ -264,6 +264,45 @@ void main() {
     outColor = texture(diffuseMap, fragTexCoord);
 }"""
 
+# ------------  simple color fragment shader demonstrated in Practical 1 ------
+SHINING_VERT = """#version 330 core
+layout (location = 0) in vec3 aPos;
+layout (location = 1) in vec3 aNormal;
+out vec3 Normal;
+out vec3 FragPos;
+
+uniform mat4 model;
+uniform mat4 view;
+uniform mat4 projection;
+
+void main()
+{
+    gl_Position = projection * view * model * vec4(aPos, 1.0);
+    FragPos = vec3(model * vec4(aPos, 1.0));
+    Normal = aNormal;
+} """
+
+SHINING_FRAG = """#version 330 core
+in vec3 Normal;
+in vec3 FragPos;
+out vec4 FragColor;
+
+uniform vec3 objectColor = vec3(1.0, 0.5, 0.31);
+uniform vec3 lightColor = vec3(1.0, 1.0, 1.0);
+uniform vec3 lightPos = vec3(1.2, 1.0, 2.0);
+
+void main()
+{
+    float ambientStrength = 0.1;
+    vec3 ambient = ambientStrength * lightColor;
+    vec3 norm = normalize(Normal);
+    vec3 lightDir = normalize(lightPos - FragPos);
+    float diff = max(dot(norm, lightDir), 0.0);
+    vec3 diffuse = diff * lightColor;
+    vec3 result = (ambient + diffuse) * objectColor;
+    FragColor = vec4(result, 1.0);
+}"""
+
 
 # -------------- OpenGL Texture Wrapper ---------------------------------------
 class Texture:
@@ -408,6 +447,24 @@ class PhongMesh:
         self.vertex_array.execute(GL.GL_TRIANGLES)
 
 
+class ShiningMesh:
+
+    def __init__(self, attributes, index=None):
+        self.vertex_array = VertexArray(attributes, index)
+
+    def draw(self, projection, view, model, shining_shader=None, **param):
+        names = ['view', 'projection', 'model']
+        loc = {n: GL.glGetUniformLocation(shining_shader.glid, n) for n in names}
+        GL.glUseProgram(shining_shader.glid)
+
+        GL.glUniformMatrix4fv(loc['view'], 1, True, view)
+        GL.glUniformMatrix4fv(loc['projection'], 1, True, projection)
+        GL.glUniformMatrix4fv(loc['model'], 1, True, model)
+
+        # draw triangle as GL_TRIANGLE vertex array, draw array call
+        self.vertex_array.execute(GL.GL_TRIANGLES)
+
+
 class TexturedMesh:
     def __init__(self, file, attributes, index=None):
         self.vertex_array = VertexArray(attributes, index)
@@ -487,25 +544,42 @@ class WormHole(Node):
 class Bullet(Node):
     def __init__(self):
         super().__init__()
-        self.add(*load('bullet/bullet.obj'))  # just load the obj from file
+        self.add(*load_shining('bullet/bullet.obj'))  # just load the obj from file
 
 
 # -------------- 3D ressource loader -----------------------------------------
-# def load(file):
-#     """ load resources from file using pyassimp, return list of ColorMesh """
-#     try:
-#         option = pyassimp.postprocess.aiProcessPreset_TargetRealtime_MaxQuality
-#         scene = pyassimp.load(file, option)
-#     except pyassimp.errors.AssimpError:
-#         print('ERROR: pyassimp unable to load', file)
-#         return []  # error reading => return empty list
-#
-#     meshes = [ColorMesh([m.vertices, m.normals], m.faces) for m in scene.meshes]
-#     size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
-#     print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
-#
-#     pyassimp.release(scene)
-#     return meshes
+
+def load_shining(file):
+    """ load resources from file using pyassimp, return list of ColorMesh """
+    try:
+        option = pyassimp.postprocess.aiProcessPreset_TargetRealtime_MaxQuality
+        scene = pyassimp.load(file, option)
+    except pyassimp.errors.AssimpError:
+        print('ERROR: pyassimp unable to load', file)
+        return []  # error reading => return empty list
+
+    # reorganize and keep only first material properties of each
+    for mat in scene.materials:
+        mat.tokens = dict(reversed(list(mat.properties.items())))
+
+    # prepare mesh nodes
+    meshes = []
+    for mesh in scene.meshes:
+        mat = scene.materials[mesh.materialindex].tokens
+        node = Node(Kd=mat.get('diffuse', (1, 1, 1)),
+                    Ka=mat.get('ambient', (0, 0, 0)),
+                    Ks=mat.get('specular', (1, 1, 1)),
+                    s=mat.get('shininess', 16.))
+        node.add(ShiningMesh([mesh.vertices, mesh.normals], mesh.faces))
+        meshes.append(node)
+
+    size = sum((mesh.faces.shape[0] for mesh in scene.meshes))
+    print('Loaded %s\t(%d meshes, %d faces)' % (file, len(scene.meshes), size))
+
+    pyassimp.release(scene)
+    return meshes
+
+
 def load(file):
     """ load resources from file using pyassimp, return list of ColorMesh """
     try:
@@ -669,6 +743,7 @@ class Viewer:
         self.color_shader = Shader(COLOR_VERT, COLOR_FRAG)
         self.phong_shader = Shader(PHONG_VERT, PHONG_FRAG)
         self.texture_shader = Shader(TEXTURE_VERT, TEXTURE_FRAG)
+        self.shining_shader = Shader(SHINING_VERT, SHINING_FRAG)
 
         # initially empty list of object to draw
         self.drawables = []
@@ -697,7 +772,7 @@ class Viewer:
             for drawable in self.drawables:
                 drawable.draw(projection, view, identity(),
                               color_shader=self.color_shader, phong_shader=self.phong_shader,
-                              texture_shader=self.texture_shader, win=self.win)
+                              texture_shader=self.texture_shader, shining_shader=self.shining_shader, win=self.win)
             # TODO use texture_shader
             # flush render commands, and swap draw buffers
             glfw.swap_buffers(self.win)
@@ -742,7 +817,7 @@ class RotationControlNode(Node):
         # self.position -= self.precision_position * int(glfw.get_key(win, self.key_left) == glfw.PRESS)
         # print(self.position)
         # translation = self.position * self.position_axis
-        self.transform = rotate((1, 0, 0), min(-20 + glfw.get_time(), -1)) @ self.transform_before @ \
+        self.transform = rotate((1, 0, 0), min(-100 + np.sqrt(1000*glfw.get_time()), -1)) @ self.transform_before @ \
                          rotate(self.axis, self.angle) @ self.transform_after  # @ translate(0, self.position,0)
 
         # call Node's draw method to pursue the hierarchical tree calling
